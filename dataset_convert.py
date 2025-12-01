@@ -2,12 +2,11 @@ import os
 import csv
 import xml.etree.ElementTree as ET
 
-# ================= CONFIGURATION =================
 WINDOW_SIZE = 3
 DATA_DIR = "data/semcor"        # input directory
 OUTPUT_CSV = "wsd_dataset_semcor.csv"
 
-# CSV header
+# CSV header definition
 header = [
     "doc_id", "sent_id", "token_index",
     "target_word", "lemma", "pos", "sense",
@@ -19,7 +18,6 @@ rows = []
 
 
 def process_file(filepath):
-    """Parse a single XML file and extract training instances."""
     tree = ET.parse(filepath)
     root = tree.getroot()
 
@@ -27,7 +25,7 @@ def process_file(filepath):
     current_sentence = []
 
     for elem in root.iter("word"):
-        token = elem.get("text")
+        token = elem.get("text", "")
         lemma = elem.get("lemma")
         pos = elem.get("pos")
         sense = elem.get("sense")
@@ -40,7 +38,7 @@ def process_file(filepath):
             "sense": sense
         })
 
-        # Check for sentence boundary
+        # Check for sentence break
         if break_level == "SENTENCE_BREAK":
             sentences.append(current_sentence)
             current_sentence = []
@@ -51,44 +49,43 @@ def process_file(filepath):
     return sentences
 
 
-# ================= MAIN LOOP =================
+print("Reading XML files from:", DATA_DIR)
 for filename in os.listdir(DATA_DIR):
     if not filename.endswith(".xml"):
         continue
 
     xml_path = os.path.join(DATA_DIR, filename)
-    print("[Processing]", xml_path)
-
     sentences = process_file(xml_path)
 
     for sent_id, tokens in enumerate(sentences):
         for i, tok in enumerate(tokens):
+
+            # Use only labeled (sensed) tokens for supervised WSD
             if tok["sense"] is None:
-                continue  # keep only labeled instances
+                continue
 
             before = tokens[max(0, i - WINDOW_SIZE): i]
             after = tokens[i + 1: i + 1 + WINDOW_SIZE]
 
             rows.append([
-                filename,                      # doc ID
-                sent_id,                       # sentence ID
-                i,                             # token index in sentence
-                tok["token"],                  # target word
-                tok["lemma"],
-                tok["pos"],
-                tok["sense"],                  # label
-                " ".join(t["token"] for t in before),
-                " ".join(t["token"] for t in after),
-                " ".join(t["token"] for t in tokens),
-                " ".join((t["pos"] or "NULL") for t in tokens)
+                filename,                                  # document id
+                sent_id,                                   # sentence id
+                i,                                         # token index
+                tok["token"],                              # target word
+                tok["lemma"],                              # lemma
+                tok["pos"],                                # POS
+                tok["sense"],                              # target label
+                " ".join(t["token"] for t in before),      # context window before
+                " ".join(t["token"] for t in after),       # context window after
+                " ".join(t["token"] for t in tokens),      # full sentence words
+                " ".join((t["pos"] or "X") for t in tokens) # full POS sequence
             ])
 
-
-# ================= SAVE CSV =================
+print("\nSaving CSV:", OUTPUT_CSV)
 with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
     writer = csv.writer(f)
     writer.writerow(header)
     writer.writerows(rows)
 
-print("✔ CSV Created Successfully:", OUTPUT_CSV)
+print("\nCSV Created Successfully:", OUTPUT_CSV)
 print("Total labeled instances:", len(rows))

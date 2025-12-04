@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, recall_score, cohen_kappa_score
 from sklearn.tree import DecisionTreeClassifier
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +12,12 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 lemmas = pd.read_csv(LEMMA_FILE)["lemma"].tolist()
+
+def compute_group_recall(labels, preds, groups):
+    mask = labels.isin(groups)
+    if mask.sum() == 0:
+        return None
+    return recall_score(labels[mask], preds[mask], average="macro", zero_division=0)
 
 rows = []
 
@@ -51,12 +57,28 @@ for lemma in lemmas:
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
+    sense_freq = y_train.value_counts()
+    rare_senses = sense_freq[sense_freq < 10].index
+    medium_senses = sense_freq[(sense_freq >= 10) & (sense_freq < 30)].index
+    frequent_senses = sense_freq[sense_freq >= 30].index
+
+    rare_recall = compute_group_recall(y_test, y_pred, rare_senses)
+    medium_recall = compute_group_recall(y_test, y_pred, medium_senses)
+    frequent_recall = compute_group_recall(y_test, y_pred, frequent_senses)
+
+    train_pred = model.predict(X_train)
+
     rows.append({
         "lemma": lemma,
-        "DT_acc": accuracy_score(y_test, y_pred),
-        "DT_macroF1": f1_score(y_test, y_pred, average="macro"),
-        "DT_precision": precision_score(y_test, y_pred, average="macro", zero_division=0),
-        "DT_recall": recall_score(y_test, y_pred, average="macro", zero_division=0)
+        f"DT_acc": accuracy_score(y_test, y_pred),
+        f"DT_macroF1": f1_score(y_test, y_pred, average="macro"),
+        f"DT_recall": recall_score(y_test, y_pred, average="macro", zero_division=0),
+        f"DT_kappa": cohen_kappa_score(y_test, y_pred),
+        f"DT_genGap": f1_score(y_train, train_pred, average="macro") -
+                                f1_score(y_test, y_pred, average="macro"),
+        f"DT_rareRecall": rare_recall,
+        f"DT_mediumRecall": medium_recall,
+        f"DT_frequentRecall": frequent_recall,
     })
 
 output_path = os.path.join(RESULTS_DIR, "DT_results.csv")

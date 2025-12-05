@@ -10,9 +10,10 @@ from sklearn.tree import DecisionTreeClassifier
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_FILE = os.path.join(BASE_DIR, "wsd_dataset_semcor.csv")
-RESULTS_FILE = os.path.join(BASE_DIR, "results", "feature_ablation_results.csv")
+RESULTS_FILE = os.path.join(BASE_DIR, "results", "feature_comparison_results.csv")
 
 os.makedirs(os.path.join(BASE_DIR, "results"), exist_ok=True)
+confusion_output = os.path.join(BASE_DIR, "results", "feature_confusing_lemmas.csv")
 
 df = pd.read_csv(CSV_FILE)
 df = df.dropna(subset=["sense", "lemma"])
@@ -88,4 +89,12 @@ for feat_name, feat_func in FEATURES.items():
         })
 
 pd.DataFrame(rows).to_csv(RESULTS_FILE, index=False)
-print("\nFeature ablation results saved to:", RESULTS_FILE)
+
+print("\nFeature comparison results saved to:", RESULTS_FILE)
+
+df_results = pd.DataFrame(rows)
+confusion_output = os.path.join(BASE_DIR, "results", "feature_confusing_lemmas.csv")
+worst_feature_model = df_results.sort_values(by="macroF1").head(10)
+worst_feature_model.to_csv(confusion_output, index=False)
+
+print("Worst feature-model combinations saved to:", confusion_output)

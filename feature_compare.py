@@ -6,8 +6,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, f1_score, recall_score, cohen_kappa_score
 from sklearn.svm import LinearSVC
 from sklearn.linear_model import LogisticRegression
+from sklearn.utils.class_weight import compute_class_weight
 from sklearn.naive_bayes import ComplementNB
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import SGDClassifier
+import numpy as np
+from tqdm import tqdm
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_FILE = os.path.join(BASE_DIR, "wsd_dataset_semcor.csv")
@@ -15,8 +19,6 @@ RESULTS_FILE = os.path.join(BASE_DIR, "results", "feature_comparison_results.csv
 
 os.makedirs(os.path.join(BASE_DIR, "results"), exist_ok=True)
 
-
-# Load dataset
 df = pd.read_csv(CSV_FILE)
 df = df.dropna(subset=["sense", "lemma"])
 
@@ -24,28 +26,32 @@ sense_counts = df["sense"].value_counts()
 df = df[df["sense"].isin(sense_counts[sense_counts >= 10].index)]
 
 df = df.sample(15000, random_state=42)  # Reduce to 15k samples
-MAX_FEATURES = 20000                    # Reduce TF-IDF dim
+MAX_FEATURES = 20000  # Reduce TF-IDF dim
 
 sense_counts = df["sense"].value_counts()
 df = df[df["sense"].isin(sense_counts[sense_counts >= 2].index)]
 
+
 def build_window_features(df):
     return (
-        df["context_before_words"].fillna("") + " " +
-        df["target_word"].fillna("") + " " +
-        df["context_after_words"].fillna("")
+            df["context_before_words"].fillna("") + " " +
+            df["target_word"].fillna("") + " " +
+            df["context_after_words"].fillna("")
     )
+
 
 def build_sentence_features(df):
     return df["sentence_words"].fillna("")
 
+
 def build_pos_augmented(df):
     return (
-        df["context_before_words"].fillna("") + " " +
-        df["target_word"].fillna("") + " " +
-        df["context_after_words"].fillna("") + " " +
-        df["sentence_pos"].fillna("")
+            df["context_before_words"].fillna("") + " " +
+            df["target_word"].fillna("") + " " +
+            df["context_after_words"].fillna("") + " " +
+            df["sentence_pos"].fillna("")
     )
+
 
 FEATURES = {
     "window": build_window_features,
@@ -56,8 +62,7 @@ FEATURES = {
 MODELS = {
     "NB": ComplementNB(alpha=1.0),
     "SVM": LinearSVC(class_weight="balanced", loss="squared_hinge", C=0.5, dual=False),
-    "LR": LogisticRegression(max_iter=2000, class_weight="balanced",
-                             solver="saga", penalty="l2", C=2.0, n_jobs=1),
+    "LR": LogisticRegression(solver='saga',penalty='l2',C=1.0,max_iter=100,class_weight='balanced',n_jobs=-1,random_state=42,tol=1e-3,warm_start=False),
     "DT": DecisionTreeClassifier(max_depth=50, min_samples_split=5, min_samples_leaf=1),
 }
 
@@ -69,7 +74,7 @@ for feat_name, feat_func in FEATURES.items():
     X = feat_func(df)
     y = df["sense"]
 
-    vectorizer = TfidfVectorizer(lowercase=True, ngram_range=(1,1),
+    vectorizer = TfidfVectorizer(lowercase=True, ngram_range=(1, 1),
                                  min_df=3, sublinear_tf=True, max_features=MAX_FEATURES)
     X_vec = vectorizer.fit_transform(X)
 
@@ -77,6 +82,11 @@ for feat_name, feat_func in FEATURES.items():
     X_train, X_test, y_train, y_test = train_test_split(
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
+
+    classes = np.unique(y_train)
+    weights = compute_class_weight(class_weight='balanced', classes=classes, y=y_train)
+    class_weight_dict = {cls: w for cls, w in zip(classes, weights)}
+    sample_weights = np.array([class_weight_dict[label] for label in y_train])
 
     # Model training loop
     for tag, model in MODELS.items():
@@ -100,4 +110,3 @@ for feat_name, feat_func in FEATURES.items():
 # Save results
 pd.DataFrame(rows).to_csv(RESULTS_FILE, index=False)
 print("\nFeature comparison results saved to:", RESULTS_FILE)
-

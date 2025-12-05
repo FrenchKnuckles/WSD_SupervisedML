@@ -121,39 +121,4 @@ heatmap_path = os.path.join(STORE_DIR, "feature_model_heatmap.png")
 plt.savefig(heatmap_path)
 plt.close()
 
-default_path = os.path.join(RESULTS_DIR, "model_comparison_summary.csv")
-tuned_path = os.path.join(RESULTS_DIR, "tuned_model_summary.csv")
-
-if not os.path.exists(default_path):
-    raise FileNotFoundError("Run compare.py first to generate model_comparison_summary.csv")
-if not os.path.exists(tuned_path):
-    raise FileNotFoundError("Run tuning.py first to generate tuned_model_summary.csv")
-
-default_df = pd.read_csv(default_path)
-tuned_df = pd.read_csv(tuned_path)
-
-# Prepare combined dataset
-default_df["type"] = "Default"
-tuned_df["type"] = "Tuned"
-combined = pd.concat([default_df, tuned_df], ignore_index=True)
-
-# Plot
-plt.figure(figsize=(10,6))
-bar_width = 0.35
-index = np.arange(len(default_df["model"]))
-
-plt.bar(index, default_df["macroF1"], bar_width, label="Default")
-plt.bar(index + bar_width, tuned_df["macroF1"], bar_width, label="Tuned")
-
-plt.xticks(index + bar_width / 2, default_df["model"], fontsize=12)
-plt.ylabel("Macro F1 Score")
-plt.title("Default vs Tuned Model Performance (Macro F1)", fontsize=16)
-plt.legend()
-plt.tight_layout()
-
-output_img = os.path.join(STORE_DIR, "default_vs_tuned_macroF1.png")
-plt.savefig(output_img)
-plt.close()
-
-
 print("All visualizations saved to /results/imgs")

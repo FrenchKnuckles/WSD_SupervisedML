@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score, f1_score, recall_score, cohen_kappa_score
 from sklearn.tree import DecisionTreeClassifier
+from interpretibility_utils import extract_dt_features
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_FILE = os.path.join(BASE_DIR, "wsd_dataset_semcor.csv")
@@ -56,6 +57,8 @@ for lemma in lemmas:
     model = DecisionTreeClassifier()
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
+
+    extract_dt_features(model, vectorizer, lemma, "DT")
 
     sense_freq = y_train.value_counts()
     rare_senses = sense_freq[sense_freq < 10].index

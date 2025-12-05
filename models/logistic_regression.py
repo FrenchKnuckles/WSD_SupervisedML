@@ -54,7 +54,7 @@ for lemma in lemmas:
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = LogisticRegression(max_iter=4000, class_weight="balanced")
+    model = LogisticRegression(max_iter=4000,class_weight="balanced",solver="saga",penalty="l2",C=2.0)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 

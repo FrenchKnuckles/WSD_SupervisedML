@@ -1,3 +1,4 @@
+# --- filename: feature_compare.py ---
 import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -13,13 +14,20 @@ CSV_FILE = os.path.join(BASE_DIR, "wsd_dataset_semcor.csv")
 RESULTS_FILE = os.path.join(BASE_DIR, "results", "feature_comparison_results.csv")
 
 os.makedirs(os.path.join(BASE_DIR, "results"), exist_ok=True)
-confusion_output = os.path.join(BASE_DIR, "results", "feature_confusing_lemmas.csv")
 
+
+# Load dataset
 df = pd.read_csv(CSV_FILE)
 df = df.dropna(subset=["sense", "lemma"])
 
 sense_counts = df["sense"].value_counts()
 df = df[df["sense"].isin(sense_counts[sense_counts >= 10].index)]
+
+df = df.sample(15000, random_state=42)  # Reduce to 15k samples
+MAX_FEATURES = 20000                    # Reduce TF-IDF dim
+
+sense_counts = df["sense"].value_counts()
+df = df[df["sense"].isin(sense_counts[sense_counts >= 2].index)]
 
 def build_window_features(df):
     return (
@@ -42,16 +50,16 @@ def build_pos_augmented(df):
 FEATURES = {
     "window": build_window_features,
     "sentence": build_sentence_features,
-    "tfidf_pos": build_pos_augmented
+    "tfidf_pos": build_pos_augmented,
 }
 
 MODELS = {
-    "NB": ComplementNB(alpha=0.5),
-    "SVM": LinearSVC(class_weight="balanced"),
-    "LR": LogisticRegression(max_iter=500, solver="saga", penalty="l2"),
-    "DT": DecisionTreeClassifier(max_depth=50)
+    "NB": ComplementNB(alpha=1.0),
+    "SVM": LinearSVC(class_weight="balanced", loss="squared_hinge", C=0.5, dual=False),
+    "LR": LogisticRegression(max_iter=2000, class_weight="balanced",
+                             solver="saga", penalty="l2", C=2.0, n_jobs=1),
+    "DT": DecisionTreeClassifier(max_depth=50, min_samples_split=5, min_samples_leaf=1),
 }
-
 
 rows = []
 
@@ -62,19 +70,20 @@ for feat_name, feat_func in FEATURES.items():
     y = df["sense"]
 
     vectorizer = TfidfVectorizer(lowercase=True, ngram_range=(1,1),
-                                 min_df=3, sublinear_tf=True, max_features=60000)
+                                 min_df=3, sublinear_tf=True, max_features=MAX_FEATURES)
     X_vec = vectorizer.fit_transform(X)
 
+    # Train-test split ONCE only
     X_train, X_test, y_train, y_test = train_test_split(
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
 
+    # Model training loop
     for tag, model in MODELS.items():
         print(f" -> Fitting {tag} ...")
 
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
-
         train_pred = model.predict(X_train)
 
         rows.append({
@@ -88,13 +97,7 @@ for feat_name, feat_func in FEATURES.items():
                       f1_score(y_test, y_pred, average="macro")
         })
 
+# Save results
 pd.DataFrame(rows).to_csv(RESULTS_FILE, index=False)
-
 print("\nFeature comparison results saved to:", RESULTS_FILE)
 
-df_results = pd.DataFrame(rows)
-confusion_output = os.path.join(BASE_DIR, "results", "feature_confusing_lemmas.csv")
-worst_feature_model = df_results.sort_values(by="macroF1").head(10)
-worst_feature_model.to_csv(confusion_output, index=False)
-
-print("Worst feature-model combinations saved to:", confusion_output)

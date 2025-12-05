@@ -1,3 +1,4 @@
+# --- filename: models/SVM.py ---
 import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -28,14 +29,19 @@ for lemma in lemmas:
     df = pd.read_csv(CSV_FILE)
     df = df.dropna(subset=["sense", "lemma"])
 
+    # Filter only rows belonging to this lemma
     df_word = df[df["lemma"] == lemma].copy()
+
+    # Initial minimum class size filter
     sense_counts = df_word["sense"].value_counts()
     df_word = df_word[df_word["sense"].isin(sense_counts[sense_counts >= 10].index)]
 
+    # Check after first filtering
     if df_word["sense"].nunique() < 2:
-        print(f"[SVM] Skipping {lemma} (not enough senses)")
+        print(f"[SVM] Skipping {lemma} (not enough senses after filtering)")
         continue
 
+    # Build combined context feature
     df_word["combined_context"] = (
         df_word["context_before_words"].fillna("") + " " +
         df_word["target_word"].fillna("") + " " +
@@ -46,20 +52,28 @@ for lemma in lemmas:
     X = df_word["combined_context"]
     y = df_word["sense"]
 
-    vectorizer = TfidfVectorizer(lowercase=True, ngram_range=(1,2), min_df=2,
+    # Vectorization
+    vectorizer = TfidfVectorizer(lowercase=True, ngram_range=(1, 2), min_df=2,
                                  sublinear_tf=True, max_features=60000)
     X_vec = vectorizer.fit_transform(X)
 
+    # Train/Test split
     X_train, X_test, y_train, y_test = train_test_split(
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = LinearSVC(class_weight="balanced")
+    # Model
+    model = LinearSVC(class_weight="balanced",loss="hinge",C=0.5, max_iter=8000)
     model.fit(X_train, y_train)
+    if len(model.classes_) < 2:
+        print(f"[SVM] Skipping {lemma} (only one class learned after split)")
+        continue
     y_pred = model.predict(X_test)
+
 
     extract_linear_features(model, vectorizer, lemma, "SVM")
 
+    # Frequency groups
     sense_freq = y_train.value_counts()
     rare_senses = sense_freq[sense_freq < 10].index
     medium_senses = sense_freq[(sense_freq >= 10) & (sense_freq < 30)].index
@@ -69,21 +83,23 @@ for lemma in lemmas:
     medium_recall = compute_group_recall(y_test, y_pred, medium_senses)
     frequent_recall = compute_group_recall(y_test, y_pred, frequent_senses)
 
+    # Generalization gap
     train_pred = model.predict(X_train)
 
     rows.append({
         "lemma": lemma,
-        f"SVM_acc": accuracy_score(y_test, y_pred),
-        f"SVM_macroF1": f1_score(y_test, y_pred, average="macro"),
-        f"SVM_recall": recall_score(y_test, y_pred, average="macro", zero_division=0),
-        f"SVM_kappa": cohen_kappa_score(y_test, y_pred),
-        f"SVM_genGap": f1_score(y_train, train_pred, average="macro") -
-                                f1_score(y_test, y_pred, average="macro"),
-        f"SVM_rareRecall": rare_recall,
-        f"SVM_mediumRecall": medium_recall,
-        f"SVM_frequentRecall": frequent_recall,
+        "SVM_acc": accuracy_score(y_test, y_pred),
+        "SVM_macroF1": f1_score(y_test, y_pred, average="macro"),
+        "SVM_recall": recall_score(y_test, y_pred, average="macro", zero_division=0),
+        "SVM_kappa": cohen_kappa_score(y_test, y_pred),
+        "SVM_genGap": f1_score(y_train, train_pred, average="macro") -
+                      f1_score(y_test, y_pred, average="macro"),
+        "SVM_rareRecall": rare_recall,
+        "SVM_mediumRecall": medium_recall,
+        "SVM_frequentRecall": frequent_recall,
     })
 
+# Save results
 output_path = os.path.join(RESULTS_DIR, "SVM_results.csv")
 pd.DataFrame(rows).to_csv(output_path, index=False)
 print("SVM results saved to:", output_path)

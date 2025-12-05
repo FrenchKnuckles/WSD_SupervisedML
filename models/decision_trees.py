@@ -54,7 +54,7 @@ for lemma in lemmas:
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = DecisionTreeClassifier()
+    model = DecisionTreeClassifier(max_depth=50,min_samples_split=5,min_samples_leaf=1)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 

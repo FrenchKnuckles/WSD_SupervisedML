@@ -55,7 +55,7 @@ for lemma in lemmas:
         X_vec, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = ComplementNB(alpha=0.5)
+    model = ComplementNB(alpha=1.0)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
